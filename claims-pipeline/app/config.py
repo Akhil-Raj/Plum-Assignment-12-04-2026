@@ -23,11 +23,11 @@ class LLMModels(BaseModel):
 
 
 class LLMMaxTokens(BaseModel):
-    classifier: int = 1500
-    reader: int = 8000
-    consistency: int = 4000
-    prep: int = 5000
-    fraud_assessor: int = 2000
+    classifier: int = 3000
+    reader: int = 24000
+    consistency: int = 8000
+    prep: int = 10000
+    fraud_assessor: int = 4000
 
 
 class LLMConfig(BaseModel):
