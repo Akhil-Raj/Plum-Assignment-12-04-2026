@@ -1,0 +1,47 @@
+# System knobs only. Policy rules live in policy_terms.json and are never duplicated here.
+llm:
+  api_key_env: ANTHROPIC_API_KEY
+  timeout_seconds: 90
+  sdk_retries: 1          # SDK-level retries for connection errors / 429 / 5xx
+  bad_output_retries: 1   # our retries when a response fails schema validation
+  models:
+    classifier: claude-sonnet-4-6      # vision classification: fast + cheap gates the expensive calls
+    reader: claude-opus-4-8            # full document read: messy handwriting / stamps need depth
+    consistency: claude-opus-4-8
+    prep: claude-opus-4-8
+    fraud_assessor: claude-opus-4-8
+  max_tokens:
+    classifier: 1500
+    reader: 8000
+    consistency: 4000
+    prep: 5000
+    fraud_assessor: 2000
+
+thresholds:
+  classification_confidence_warn: 0.6   # below this a classification gets a WARN + confidence deduction
+  extraction_confidence_warn: 0.6       # below this a document read gets a WARN + confidence deduction
+  name_mismatch_stop_confidence: 0.6    # a patient-mismatch FAIL below this confidence routes to review instead of stopping
+  prep_mapping_confidence_warn: 0.6     # below this a prep mapping gets a WARN + confidence deduction
+
+confidence:
+  warn_deduction: 0.05            # each WARN event pulls the claim confidence down by this
+  read_failed_deduction: 0.15     # a document that could not be read at all
+  skipped_component_deduction: 0.25  # an entire pipeline component failed and was skipped
+  fraud_signal_deduction: 0.05    # sub-threshold fraud signals present
+  floor: 0.05
+
+files:
+  max_file_mb: 10
+  allowed_extensions: [jpg, jpeg, png, pdf]
+  upload_dir: data/uploads
+
+storage:
+  db_path: data/claims.db
+
+pipeline:
+  # the stage that `simulate_component_failure` breaks (TC011); consistency is the natural
+  # target because the claim can still reach a correct decision without it
+  simulated_failure_stage: consistency_checks
+
+policy:
+  policy_file: policy_terms.json
