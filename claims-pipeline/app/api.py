@@ -18,6 +18,7 @@ from typing import Optional
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 
+from app.config import ROOT_DIR
 from app.errors import IntakeRejected
 from app.models import ClaimSubmission, DocType, UploadedDocument
 from app.service import ClaimService
@@ -145,6 +146,27 @@ def get_claim(request: Request, claim_id: str):
     if record is None:
         return JSONResponse(status_code=404, content={"error": f"claim {claim_id} not found"})
     return record
+
+
+@router.get("/test-cases")
+def list_test_cases():
+    """The bundled test scenarios, for the UI's demo runner. The eval runner is the
+    authoritative consumer of test_cases.json; this endpoint just mirrors it."""
+    path = ROOT_DIR / "test_cases.json"
+    if not path.exists():
+        return JSONResponse(status_code=404, content={"error": "test_cases.json not found"})
+    data = json.loads(path.read_text())
+    return {
+        "cases": [
+            {
+                "case_id": c["case_id"],
+                "case_name": c.get("case_name", ""),
+                "description": c.get("description", ""),
+                "input": c["input"],
+            }
+            for c in data.get("test_cases", [])
+        ]
+    }
 
 
 @router.get("/healthz")

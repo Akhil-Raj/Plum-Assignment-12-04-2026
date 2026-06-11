@@ -11,8 +11,8 @@ Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy
 (done)     (done)             (done)         (done)               (done)              (done)
 ```
 
-**The pipeline is complete.** Remaining: the submission/ops UI, the 12-case eval
-report, and the architecture + contracts documents.
+**The pipeline is complete, with a UI.** Remaining: the 12-case eval report and
+the architecture + contracts documents.
 
 **Build progress**
 
@@ -74,7 +74,13 @@ report, and the architecture + contracts documents.
   outcome for the reviewer; an already-`REJECTED` claim is never overridden (no
   payment to protect); **fraud never auto-rejects**. Status:
   `DECIDED → FINALIZED`.
-- [ ] UI, eval report over the 12 test cases, architecture document
+- [x] **UI** — a dependency-free single page at `/ui/` (the root redirects there):
+  a submission form whose member/category/document-type dropdowns come from
+  `GET /policy/meta`, per-file declared-type selection, a one-click runner for the
+  12 bundled test scenarios, and an ops review view showing every claim's
+  decision, money/line-item breakdowns, fraud signals, documents with extracted
+  content, and the full color-coded trace from intake to FINALIZED.
+- [ ] Eval report over the 12 test cases, architecture document
 
 ## Setup
 
@@ -95,6 +101,16 @@ and the claim keeps moving.
 ```bash
 .venv/bin/python -m uvicorn app.main:app --reload
 ```
+
+Then open **http://localhost:8000/** — the UI has two tabs:
+
+- **Submit a claim**: dropdowns driven by the policy file, file upload with
+  optional per-file declared types (the classifier's fallback), a
+  simulate-component-failure toggle for the resilience demo, and a runner for the
+  12 bundled test scenarios.
+- **Review claims**: the ops view — every claim with its decision, approved
+  amount, money and line-item breakdowns, fraud signals, extracted document
+  content, and the full trace, color-coded by PASS / FAIL / WARN / SKIPPED.
 
 ## Test
 
@@ -223,8 +239,9 @@ app/
     policy_decision.py # prep wiring, low-confidence mapping warns, prep-failure fallback
     rules_engine.py    # the policy applied in fixed order, pure code, every step traced
     fraud_check.py     # threshold checks (code) + assessor + override routing; end of pipeline
+ui/                    # dependency-free single page: submission form + ops review (full trace)
 scripts/
   make_mock_docs.py    # renders sample Indian medical documents (incl. a blurry one)
 policy_terms.json      # the policy (single source of truth for every rule)
-tests/                 # 119 tests: every stage, every gate, every graded scenario, API
+tests/                 # 121 tests: every stage, every gate, every graded scenario, API, UI serving
 ```

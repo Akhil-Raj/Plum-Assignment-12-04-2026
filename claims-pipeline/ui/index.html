@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Claims Pipeline</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <h1>Claims Pipeline</h1>
+      <span id="policy-name" class="muted"></span>
+      <nav>
+        <button id="nav-submit" class="nav-btn active" type="button">Submit a claim</button>
+        <button id="nav-claims" class="nav-btn" type="button">Review claims</button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ------------------------------------------------------------ submit view -->
+  <section id="view-submit" class="view active">
+    <div class="card">
+      <h2>New claim</h2>
+      <form id="claim-form">
+        <div class="grid">
+          <label>Member
+            <select id="member" required></select>
+          </label>
+          <label>Policy ID
+            <input id="policy-id" type="text" readonly />
+          </label>
+          <label>Claim category
+            <select id="category" required></select>
+          </label>
+          <label>Treatment date
+            <input id="treatment-date" type="date" required />
+          </label>
+          <label>Claimed amount (₹)
+            <input id="amount" type="number" min="0" step="0.01" required />
+          </label>
+          <label>Hospital name <span class="muted">(optional)</span>
+            <input id="hospital" type="text" placeholder="e.g. Apollo Hospitals" />
+          </label>
+          <label>Claimed so far this year (₹) <span class="muted">(optional)</span>
+            <input id="ytd" type="number" min="0" step="0.01" value="0" />
+          </label>
+          <label class="checkbox-label">
+            <input id="simulate" type="checkbox" />
+            Simulate a component failure (resilience demo)
+          </label>
+        </div>
+
+        <p id="requirements-hint" class="hint"></p>
+
+        <label class="files-label">Documents (jpg / png / pdf)
+          <input id="files" type="file" multiple accept=".jpg,.jpeg,.png,.pdf" />
+        </label>
+        <div id="file-types"></div>
+
+        <button type="submit" class="primary" id="submit-btn">Submit claim</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Run a bundled test scenario</h2>
+      <p class="muted">Feeds one of the 12 test cases (stub documents) through the same
+        pipeline. Semantic stages (consistency, decision prep, fraud assessor) make live
+        LLM calls — set <code>ANTHROPIC_API_KEY</code> before starting the server for
+        full behavior; without it they degrade gracefully.</p>
+      <div class="row">
+        <select id="tc-select"></select>
+        <button id="tc-run" class="primary" type="button">Run</button>
+      </div>
+      <p id="tc-description" class="muted"></p>
+    </div>
+
+    <div id="submit-result"></div>
+  </section>
+
+  <!-- ------------------------------------------------------------ claims view -->
+  <section id="view-claims" class="view">
+    <div class="card">
+      <div class="row spread">
+        <h2>Claims</h2>
+        <button id="refresh" type="button">Refresh</button>
+      </div>
+      <table id="claims-table">
+        <thead>
+          <tr>
+            <th>Claim</th><th>Member</th><th>Category</th><th>Claimed</th>
+            <th>Status</th><th>Decision</th><th>Approved</th><th>Confidence</th><th>Created</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <p id="claims-empty" class="muted">No claims yet.</p>
+    </div>
+
+    <div id="claim-detail"></div>
+  </section>
+
+  <script src="app.js"></script>
+</body>
+</html>

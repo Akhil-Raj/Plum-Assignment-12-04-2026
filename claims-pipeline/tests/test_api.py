@@ -215,3 +215,20 @@ def test_multipart_with_bad_extension_is_rejected(client):
 
 def test_healthz(client):
     assert client.get("/healthz").json() == {"status": "ok"}
+
+
+def test_test_cases_endpoint_mirrors_the_bundled_scenarios(client):
+    cases = client.get("/test-cases").json()["cases"]
+    assert len(cases) == 12
+    assert cases[0]["case_id"] == "TC001"
+    assert all("input" in c and "case_name" in c for c in cases)
+
+
+def test_ui_is_served(client):
+    response = client.get("/ui/")
+    assert response.status_code == 200
+    assert "Claims Pipeline" in response.text
+    assert client.get("/ui/app.js").status_code == 200
+    assert client.get("/ui/style.css").status_code == 200
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code in (302, 307) and root.headers["location"] == "/ui/"
