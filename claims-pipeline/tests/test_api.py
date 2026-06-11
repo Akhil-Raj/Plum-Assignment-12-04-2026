@@ -27,7 +27,10 @@ def case_input(case_id: str) -> dict:
 
 
 @pytest.fixture()
-def client(tmp_path):
+def client(tmp_path, monkeypatch):
+    # the API app uses the real LLM-backed agents; tests run keyless so agent calls
+    # degrade deterministically (and never touch the network even if a key is set)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     config = load_config()
     config.storage.db_path = str(tmp_path / "api.db")
     config.files.upload_dir = str(tmp_path / "uploads")
@@ -44,22 +47,46 @@ VALID_CLAIM = {
     "claimed_amount": 1500,
     "submission_date": "2024-11-05",
     "documents": [
-        {"file_id": "F001", "file_name": "prescription.jpg", "actual_type": "PRESCRIPTION"},
-        {"file_id": "F002", "file_name": "bill.jpg", "actual_type": "HOSPITAL_BILL"},
+        {
+            "file_id": "F001",
+            "file_name": "prescription.jpg",
+            "actual_type": "PRESCRIPTION",
+            "content": {"doctor_name": "Dr. Arun Sharma", "patient_name": "Rajesh Kumar", "diagnosis": "Viral Fever"},
+        },
+        {
+            "file_id": "F002",
+            "file_name": "bill.jpg",
+            "actual_type": "HOSPITAL_BILL",
+            "content": {"patient_name": "Rajesh Kumar", "total": 1500},
+        },
     ],
 }
 
 
-def test_valid_claim_passes_intake_gate_and_extraction(client):
+def test_valid_claim_flows_to_consistency_and_degrades_keyless(client):
     response = client.post("/claims/json", json=VALID_CLAIM)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["status"] == "EXTRACTED"
+    # intake, document check and extraction are LLM-free for stub documents; the
+    # consistency checker is a real LLM call, which fails keyless and degrades
+    assert body["status"] == "CHECKED"
     assert body["claim_id"].startswith("CLM_")
-    assert len(body["trace"]) >= 12
-    assert all(e["result"] == "PASS" for e in body["trace"])
     assert {c["detected_type"] for c in body["classifications"]} == {"PRESCRIPTION", "HOSPITAL_BILL"}
     assert len(body["reads"]) == 2, "stub documents read with no LLM involved"
+    skipped = [e for e in body["trace"] if e["result"] == "SKIPPED"]
+    assert skipped and "CONSISTENCY_CALL_FAILED" in skipped[0]["detail"]
+    assert "consistency_checks" in body["skipped_components"]
+    assert body["confidence"] < 1.0
+
+
+def test_simulate_component_failure_skips_the_stage_but_not_the_claim(client):
+    response = client.post("/claims/json", json={**VALID_CLAIM, "simulate_component_failure": True})
+    assert response.status_code == 200, "must not crash or return a 500 (TC011)"
+    body = response.json()
+    skipped = [e for e in body["trace"] if e["result"] == "SKIPPED"]
+    assert skipped and "simulated" in skipped[0]["detail"]
+    assert "consistency_checks" in body["skipped_components"]
+    assert body["confidence"] < 1.0
 
 
 def test_tc001_wrong_document_stops_via_api(client):
@@ -155,11 +182,12 @@ def test_multipart_submission_stores_files_and_degrades_without_llm(client, tmp_
     assert [d["file_id"] for d in docs] == ["F001", "F002"]
     assert docs[0]["declared_type"] == "PRESCRIPTION"
     assert docs[0]["stored_path"] and (tmp_path / "uploads").exists()
-    assert body["status"] == "EXTRACTED"
+    assert body["status"] == "CHECKED"
     assert {c["source"] for c in body["classifications"]} == {"declared_fallback"}
     assert all(r["read_failed"] for r in body["reads"]), "reader degrades without a key"
     assert any(e["result"] == "WARN" for e in body["trace"])
     assert any(e["result"] == "SKIPPED" for e in body["trace"])
+    assert "consistency_checks" in body["skipped_components"], "nothing readable to check"
     assert body["confidence"] < 1.0
 
 

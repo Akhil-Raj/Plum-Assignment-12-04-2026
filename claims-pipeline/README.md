@@ -8,7 +8,7 @@ far, and a **trace**: a list of events saying what was checked and what happened
 
 ```
 Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy Decision  →  Fraud Check
-(done)     (done)             (done)         (next)
+(done)     (done)             (done)         (done)               (next)
 ```
 
 **Build progress**
@@ -36,7 +36,16 @@ Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy
   confidence 1.0 with zero LLM calls. Low-confidence reads WARN quoting the model's
   own notes; a failed read attaches the document read-failed with a `SKIPPED` event
   and the claim keeps moving. Status: `DOCUMENTS_VERIFIED → EXTRACTED`.
-- [ ] Step 4 — Cross-document consistency checks
+- [x] **Step 4 — Cross-document consistency checks**: one text-only LLM call over
+  all document reads + claim details + the member's roster entry (family floater:
+  the patient may be a registered dependent). Code decides *which* of the six fixed
+  checks apply (a claim with no prescription is never asked doctor-consistency);
+  the model answers exactly those, as strict verdicts. Patient mismatch (TC003) is
+  the only hard stop — both names surfaced to the member; an initials-only match
+  ("R. Kumar") flags the claim for forced manual review; everything else becomes a
+  WARN that travels into Steps 5–6. Checker failure degrades with a SKIPPED event
+  (this stage is `simulate_component_failure`'s target — TC011). Status:
+  `EXTRACTED → CHECKED`.
 - [ ] Step 5 — Policy decision (rules engine)
 - [ ] Step 6 — Fraud check
 - [ ] UI, eval report over the 12 test cases, architecture document
@@ -176,13 +185,15 @@ app/
   agents/
     classifier.py      # Document Classifier (vision): type + readability, strict schema
     reader.py          # Document Reader (vision): flexible content, envelope-only validation
+    consistency.py     # Consistency Checker (text): fixed checks, strict verdicts, completeness-enforced
   pipeline/
     intake.py          # the front-door checks (each writes a PASS/FAIL trace event)
     runner.py          # stage orchestrator with the skip-on-failure rule
     document_check.py  # the early gate: concurrent classification + requirement check
     extraction.py      # concurrent reads; stub passthrough; read failures degrade
+    consistency_checks.py  # check selection (code) + verdict routing (code); TC003 gate
 scripts/
   make_mock_docs.py    # renders sample Indian medical documents (incl. a blurry one)
 policy_terms.json      # the policy (single source of truth for every rule)
-tests/                 # 71 tests: intake, policy store, runner, document gate, extraction, API
+tests/                 # 85 tests: intake, policy store, runner, gates, extraction, consistency, API
 ```

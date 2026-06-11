@@ -8,12 +8,14 @@ import pytest
 from app.agents import AgentSet
 from app.config import AppConfig, load_config
 from app.models import (
+    CheckVerdict,
     ClaimSubmission,
     DocQuality,
     DocType,
     DocumentClassification,
     DocumentRead,
     UploadedDocument,
+    VerdictResult,
 )
 from app.pipeline import build_pipeline
 from app.policy_store import PolicyStore
@@ -50,8 +52,29 @@ def make_submission(**overrides) -> ClaimSubmission:
         claimed_amount=1500.0,
         submission_date=date(2024, 11, 5),
         documents=[
-            UploadedDocument(file_id="F001", file_name="prescription.jpg", actual_type="PRESCRIPTION"),
-            UploadedDocument(file_id="F002", file_name="bill.jpg", actual_type="HOSPITAL_BILL"),
+            UploadedDocument(
+                file_id="F001",
+                file_name="prescription.jpg",
+                actual_type="PRESCRIPTION",
+                content={
+                    "doctor_name": "Dr. Arun Sharma",
+                    "patient_name": "Rajesh Kumar",
+                    "diagnosis": "Viral Fever",
+                    "date": "2024-11-01",
+                },
+            ),
+            UploadedDocument(
+                file_id="F002",
+                file_name="bill.jpg",
+                actual_type="HOSPITAL_BILL",
+                content={
+                    "hospital_name": "City Clinic",
+                    "patient_name": "Rajesh Kumar",
+                    "date": "2024-11-01",
+                    "line_items": [{"description": "Consultation Fee", "amount": 1500}],
+                    "total": 1500,
+                },
+            ),
         ],
     )
     defaults.update(overrides)
@@ -141,11 +164,54 @@ def make_read(
     )
 
 
+def make_verdict(
+    check_id: str,
+    result: str = "PASS",
+    *,
+    # Scripted test input: a confident verdict, above thresholds like
+    # name_mismatch_stop_confidence. Low-confidence tests pass their own value.
+    confidence: float = 0.9,
+    explanation: str = "scripted by test",
+    evidence: str = "",
+) -> CheckVerdict:
+    return CheckVerdict(
+        check_id=check_id,
+        result=VerdictResult(result),
+        confidence=confidence,
+        explanation=explanation,
+        evidence=evidence,
+    )
+
+
+class FakeConsistencyChecker:
+    """Stand-in for the Consistency Checker. Scripted verdicts (by check_id) are
+    merged with auto-PASS for every other asked check, mirroring the real agent's
+    completeness guarantee. Records what it was asked and given."""
+
+    def __init__(self, verdicts: Optional[dict[str, CheckVerdict]] = None, error: Optional[Exception] = None):
+        self.verdicts = verdicts or {}
+        self.error = error
+        self.asked: Optional[list[str]] = None
+        self.received: dict = {}
+
+    async def check(self, *, reads, submission, member, dependents, checks, unreadable_labels=None):
+        self.asked = [check_id for check_id, _ in checks]
+        self.received = dict(
+            reads=reads, member=member, dependents=dependents, unreadable_labels=unreadable_labels
+        )
+        if self.error is not None:
+            raise self.error
+        return [
+            self.verdicts.get(check_id) or make_verdict(check_id)
+            for check_id in self.asked
+        ]
+
+
 @pytest.fixture
 def service_factory(tmp_path):
     """Builds a ClaimService over a temp DB with whatever agents the test scripts."""
 
-    def build(classifier=None, reader=None) -> ClaimService:
+    def build(classifier=None, reader=None, consistency=None) -> ClaimService:
         config = load_config()
         config.storage.db_path = str(tmp_path / "service.db")
         config.files.upload_dir = str(tmp_path / "uploads")
@@ -154,6 +220,7 @@ def service_factory(tmp_path):
         agents = AgentSet(
             classifier=classifier or FakeClassifier(),
             reader=reader or FakeReader(),
+            consistency=consistency or FakeConsistencyChecker(),
         )
         runner = build_pipeline(policy, config, agents)
         return ClaimService(config=config, policy=policy, repo=repo, runner=runner)

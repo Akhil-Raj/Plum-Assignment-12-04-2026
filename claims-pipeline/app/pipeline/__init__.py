@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from app.agents import AgentSet
 from app.config import AppConfig
-from app.pipeline import document_check, extraction
+from app.pipeline import consistency_checks, document_check, extraction
 from app.pipeline.runner import PipelineRunner, StageFn
 from app.policy_store import PolicyStore
 
@@ -19,5 +19,6 @@ def build_pipeline(policy: PolicyStore, config: AppConfig, agents: AgentSet) -> 
     stages: list[tuple[str, StageFn]] = [
         ("document_check", document_check.build_stage(policy, config, agents.classifier)),
         ("extraction", extraction.build_stage(config, agents.reader)),
+        ("consistency_checks", consistency_checks.build_stage(policy, config, agents.consistency)),
     ]
     return PipelineRunner(stages, config)

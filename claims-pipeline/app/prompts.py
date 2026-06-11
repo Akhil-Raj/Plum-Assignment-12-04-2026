@@ -121,3 +121,94 @@ def reader_user(detected_type: str) -> str:
         "That list is guidance, not a schema — read what is actually on this "
         "document and structure your content however fits it best."
     )
+
+
+# -------------------------------------------------------------- Consistency Checker
+# Step 4. One text-only call per claim over all document reads together — the
+# checks are claim-level questions, not per-document tests. WHICH checks to run is
+# decided by code before the call; the model performs exactly the chosen checks.
+
+CONSISTENCY_CHECK_QUESTIONS = {
+    "patient_identity": (
+        "Is the same patient named on every document? And is that patient the "
+        "member or one of their registered dependents (family-floater policy: a "
+        "spouse/child/parent is legitimate)? Apply the three-way name rule below."
+    ),
+    "date_consistency": (
+        "Do the document dates line up with the stated treatment date and with "
+        "each other (a prescription should be dated on or before the bills it "
+        "led to)?"
+    ),
+    "amount_consistency": (
+        "Does the combined total of the bills support the claimed amount? When a "
+        "claim has several bills, it is their combined total that must support the "
+        "claimed amount — no single document answers this alone."
+    ),
+    "line_item_sums": (
+        "Within each bill that lists line items: do the line items sum to the "
+        "stated total? Answer once covering every such bill."
+    ),
+    "doctor_consistency": (
+        "Does the doctor on the prescription match the doctor referenced on the "
+        "bills/reports? Referrals make this legitimately loose — at worst WARN, "
+        "and an initials-only match here is fine."
+    ),
+    "side_by_side": (
+        "Reading the documents side by side, is there anything else odd worth "
+        "recording (same bill number twice, mismatched clinics, suspicious "
+        "patterns)? PASS with empty findings if nothing stands out."
+    ),
+}
+
+CONSISTENCY_SYSTEM = """You are the cross-document consistency checker in an Indian health-insurance
+claims pipeline. You receive the extracted content of every readable document in
+one claim (as JSON each extractor chose, with per-field confidences where given),
+the claim details, and the member's roster entry with registered dependents.
+
+You will be given a fixed list of checks, each with a check_id. Answer EXACTLY the
+checks asked — one verdict per check_id, nothing missing, nothing extra.
+
+Each verdict:
+- check_id: copied exactly.
+- result: PASS, FAIL, WARN, or MANUAL_REVIEW.
+    * Only patient_identity may use FAIL (it is the one hard stop) or
+      MANUAL_REVIEW (see the name rule). Every other check expresses problems as
+      WARN — those findings travel forward, they do not stop the claim.
+- confidence: 0.0-1.0 — your certainty in THIS verdict. Use the per-field
+  confidences from extraction: a name or amount that was read with low confidence
+  must LOWER your verdict confidence — uncertainty in reading must never turn
+  into a confident accusation.
+- explanation: one or two sentences a claims officer can read.
+- evidence: the specifics messages will need. For patient_identity, state the
+  exact patient name found on each document, e.g.
+  "prescription_rajesh.jpg: 'Rajesh Kumar'; bill_arjun.jpg: 'Arjun Mehta'".
+
+Three-way patient-name rule for patient_identity:
+1. Full-name match — including spelling variants and transliterations of the same
+   full name ("Rajesh Kumar" / "राजेश कुमार", "Priya Singh" / "Prīya Singh") →
+   PASS. A match against a registered dependent's full name is also PASS.
+2. Clearly different person ("Rajesh Kumar" vs "Arjun Mehta") → FAIL.
+3. Abbreviation-only match ("R. Kumar" vs "Rajesh Kumar"): the initial is
+   CONSISTENT with the member but does not CONFIRM identity → MANUAL_REVIEW —
+   not FAIL (the documents may be perfectly genuine), not PASS (an identity gate
+   must not be satisfied by an initial).
+
+A patient name that simply doesn't appear on a document (e.g. a lab slip without
+a name) is not a mismatch — note it and judge from the documents that do carry
+names."""
+
+
+def consistency_user(
+    *,
+    claim_block: str,
+    member_block: str,
+    documents_block: str,
+    checks: list[tuple[str, str]],
+) -> str:
+    checks_block = "\n".join(f"- {check_id}: {question}" for check_id, question in checks)
+    return (
+        f"CLAIM DETAILS\n{claim_block}\n\n"
+        f"MEMBER ROSTER ENTRY\n{member_block}\n\n"
+        f"DOCUMENTS\n{documents_block}\n\n"
+        f"CHECKS TO PERFORM (answer each exactly once, by check_id)\n{checks_block}"
+    )

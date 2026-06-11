@@ -10,3 +10,4 @@ from typing import Any
 class AgentSet:
     classifier: Any = None
     reader: Any = None
+    consistency: Any = None
