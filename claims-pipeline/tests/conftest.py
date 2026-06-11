@@ -10,10 +10,15 @@ from app.config import AppConfig, load_config
 from app.models import (
     CheckVerdict,
     ClaimSubmission,
+    Coverage,
     DocQuality,
     DocType,
     DocumentClassification,
     DocumentRead,
+    PrepDiagnosis,
+    PrepHospital,
+    PrepLineItem,
+    PrepResult,
     UploadedDocument,
     VerdictResult,
 )
@@ -207,11 +212,78 @@ class FakeConsistencyChecker:
         ]
 
 
+def make_item(
+    description: str,
+    amount: float,
+    coverage: str = "COVERED",
+    *,
+    matched: Optional[str] = None,
+    # Scripted test input: a confident mapping, above prep_mapping_confidence_warn.
+    confidence: float = 0.95,
+) -> PrepLineItem:
+    return PrepLineItem(
+        description=description,
+        amount=amount,
+        coverage=Coverage(coverage),
+        matched_policy_entry=matched,
+        confidence=confidence,
+    )
+
+
+def make_prep(
+    items: list[PrepLineItem],
+    *,
+    documented_total: Optional[float] = None,
+    raw_diagnosis: Optional[str] = None,
+    excluded_condition: Optional[str] = None,
+    waiting_key: Optional[str] = None,
+    diagnosis_confidence: float = 0.95,
+    hospital_found: Optional[str] = None,
+    network_match: Optional[str] = None,
+    hospital_confidence: float = 0.95,
+    pre_auth_found: bool = False,
+) -> PrepResult:
+    return PrepResult(
+        line_items=items,
+        documented_total=documented_total if documented_total is not None else sum(i.amount for i in items),
+        diagnosis=PrepDiagnosis(
+            raw_diagnosis=raw_diagnosis,
+            excluded_condition=excluded_condition,
+            waiting_period_key=waiting_key,
+            confidence=diagnosis_confidence,
+        ),
+        hospital=PrepHospital(
+            hospital_name_found=hospital_found,
+            matched_network_hospital=network_match,
+            confidence=hospital_confidence,
+        ),
+        pre_auth_reference_found=pre_auth_found,
+    )
+
+
+class FakePrepAgent:
+    """Stand-in for Decision Prep: returns the scripted PrepResult (default: one
+    covered item for the claimed amount), or raises the scripted error."""
+
+    def __init__(self, result: Optional[PrepResult] = None, error: Optional[Exception] = None):
+        self.result = result
+        self.error = error
+        self.calls = 0
+
+    async def prepare(self, *, reads, submission, policy, unreadable_labels=None) -> PrepResult:
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        if self.result is not None:
+            return self.result
+        return make_prep([make_item("Billed services", submission.claimed_amount)])
+
+
 @pytest.fixture
 def service_factory(tmp_path):
     """Builds a ClaimService over a temp DB with whatever agents the test scripts."""
 
-    def build(classifier=None, reader=None, consistency=None) -> ClaimService:
+    def build(classifier=None, reader=None, consistency=None, prep=None) -> ClaimService:
         config = load_config()
         config.storage.db_path = str(tmp_path / "service.db")
         config.files.upload_dir = str(tmp_path / "uploads")
@@ -221,6 +293,7 @@ def service_factory(tmp_path):
             classifier=classifier or FakeClassifier(),
             reader=reader or FakeReader(),
             consistency=consistency or FakeConsistencyChecker(),
+            prep=prep or FakePrepAgent(),
         )
         runner = build_pipeline(policy, config, agents)
         return ClaimService(config=config, policy=policy, repo=repo, runner=runner)

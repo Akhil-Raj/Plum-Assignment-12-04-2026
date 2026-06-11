@@ -202,10 +202,10 @@ async def test_extraction_works_even_if_document_check_was_skipped(config):
 async def test_end_to_end_reads_attached_and_persisted(service_factory):
     service = service_factory()
     record = await service.submit(make_submission())
-    # the pipeline now continues past extraction into consistency (Step 4)
-    assert record.status == ClaimStatus.CHECKED
+    # the pipeline now continues past extraction to a decision (Steps 4-5)
+    assert record.status == ClaimStatus.DECIDED
     assert len(record.reads) == 2
-    assert service.repo.get(record.claim_id).status == ClaimStatus.CHECKED
+    assert service.repo.get(record.claim_id).status == ClaimStatus.DECIDED
 
 
 # ------------------------------------------------------- envelope + json helpers

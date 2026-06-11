@@ -11,3 +11,4 @@ class AgentSet:
     classifier: Any = None
     reader: Any = None
     consistency: Any = None
+    prep: Any = None

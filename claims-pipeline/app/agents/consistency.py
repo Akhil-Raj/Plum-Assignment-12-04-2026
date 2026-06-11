@@ -13,22 +13,20 @@ the normal retry path, so an omission can never be mistaken for "didn't apply".
 """
 from __future__ import annotations
 
-import json
-
 from pydantic import BaseModel, Field
 
 from app.config import AppConfig
 from app.errors import AgentBadOutput
 from app.llm import LLMClient
-from app.models import (
-    CheckVerdict,
-    ClaimSubmission,
-    DocumentRead,
-    VerdictResult,
-    format_inr,
-)
+from app.models import CheckVerdict, ClaimSubmission, DocumentRead, VerdictResult
 from app.policy_store import Member
-from app.prompts import CONSISTENCY_SYSTEM, consistency_user
+from app.prompts import (
+    CONSISTENCY_SYSTEM,
+    claim_block,
+    consistency_user,
+    documents_block,
+    member_block,
+)
 
 AGENT = "consistency"
 
@@ -43,47 +41,6 @@ class VerdictOut(BaseModel):
 
 class ConsistencyOutput(BaseModel):
     verdicts: list[VerdictOut]
-
-
-def _claim_block(submission: ClaimSubmission) -> str:
-    lines = [
-        f"category: {submission.claim_category.upper()}",
-        f"treatment_date: {submission.treatment_date.isoformat()}",
-        f"claimed_amount: {format_inr(submission.claimed_amount)}",
-    ]
-    if submission.hospital_name:
-        lines.append(f"hospital_name (as stated by the member): {submission.hospital_name}")
-    return "\n".join(lines)
-
-
-def _member_block(member: Member | None, dependents: list[Member]) -> str:
-    if member is None:
-        return "member: (not found in roster)"
-    lines = [f"member: {member.name} ({member.member_id}, {member.relationship})"]
-    if dependents:
-        lines.append(
-            "registered dependents: "
-            + "; ".join(f"{d.name} ({d.relationship})" for d in dependents)
-        )
-    else:
-        lines.append("registered dependents: none")
-    return "\n".join(lines)
-
-
-def _documents_block(reads: list[DocumentRead], unreadable_labels: list[str]) -> str:
-    parts = []
-    for read in reads:
-        content = json.dumps(read.content, ensure_ascii=False, default=str)
-        parts.append(
-            f"[{read.file_id} | {read.doc_type.value} | extraction_confidence "
-            f"{read.extraction_confidence:.2f}]\n{content}"
-        )
-    if unreadable_labels:
-        parts.append(
-            "Not available (could not be read, judge only from the documents above): "
-            + ", ".join(unreadable_labels)
-        )
-    return "\n\n".join(parts)
 
 
 class ConsistencyCheckerAgent:
@@ -106,9 +63,9 @@ class ConsistencyCheckerAgent:
             {
                 "role": "user",
                 "content": consistency_user(
-                    claim_block=_claim_block(submission),
-                    member_block=_member_block(member, dependents),
-                    documents_block=_documents_block(reads, unreadable_labels or []),
+                    claim_block=claim_block(submission),
+                    member_block=member_block(member, dependents),
+                    documents_block=documents_block(reads, unreadable_labels or []),
                     checks=checks,
                 ),
             }

@@ -59,7 +59,7 @@ async def test_low_confidence_mismatch_routes_to_review_instead_of_stopping(serv
     service = service_factory(consistency=patient_mismatch_checker(confidence=0.3))
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.CHECKED, "a blurry name must not bounce a legitimate claim"
+    assert record.status != ClaimStatus.NEEDS_RESUBMISSION, "a blurry name must not bounce a legitimate claim"
     assert record.problems == []
     assert record.manual_review_required is True
     assert any("low confidence" in r for r in record.manual_review_reasons)
@@ -81,7 +81,7 @@ async def test_abbreviation_only_match_flags_manual_review(service_factory):
     service = service_factory(consistency=checker)
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.CHECKED, "not bounced — the documents may be genuine"
+    assert record.status != ClaimStatus.NEEDS_RESUBMISSION, "not bounced — the documents may be genuine"
     assert record.manual_review_required is True
     assert any("initials only" in r for r in record.manual_review_reasons)
     assert any(
@@ -96,7 +96,7 @@ async def test_all_pass_reaches_checked_with_six_pass_verdicts(service_factory):
     service = service_factory()  # default checker auto-passes every asked check
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.CHECKED
+    assert record.status == ClaimStatus.DECIDED
     check_events = [
         e for e in record.trace
         if e.stage == "consistency_checks" and e.check_name in {v.check_id for v in record.verdicts}
@@ -119,7 +119,7 @@ async def test_sum_mismatch_warns_and_is_stored_for_fraud(service_factory, confi
     service = service_factory(consistency=checker)
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.CHECKED, "warnings travel forward, they don't stop"
+    assert record.status != ClaimStatus.NEEDS_RESUBMISSION, "warnings travel forward, they don't stop"
     assert any("line_item_sums" in s and "11,800" in s for s in record.soft_signals)
     assert record.confidence == pytest.approx(1.0 - config.confidence.warn_deduction)
     assert any(v.check_id == "line_item_sums" and v.result == VerdictResult.WARN for v in record.verdicts)
@@ -136,7 +136,7 @@ async def test_fail_on_non_patient_check_is_downgraded_to_warn(service_factory):
     service = service_factory(consistency=checker)
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.CHECKED
+    assert record.status != ClaimStatus.NEEDS_RESUBMISSION
     event = next(e for e in record.trace if e.check_name == "date_consistency")
     assert event.result == TraceResult.WARN
     assert "only a patient mismatch stops a claim" in event.detail
@@ -152,7 +152,8 @@ async def test_checker_failure_degrades_and_recommends_review(service_factory, c
     service = service_factory(consistency=checker)
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.CHECKED, "the claim still reaches a decision without it"
+    assert record.status == ClaimStatus.DECIDED, "the claim still reaches a decision without it"
+    assert record.decision is not None
     assert "consistency_checks" in record.skipped_components
     skipped = next(
         e for e in record.trace
@@ -178,7 +179,7 @@ async def test_no_readable_content_degrades_without_calling_checker(service_fact
         )
     )
     assert checker.asked is None, "nothing readable: the checker must not be called"
-    assert record.status == ClaimStatus.CHECKED
+    assert record.status == ClaimStatus.DECIDED
     assert "consistency_checks" in record.skipped_components
 
 
@@ -214,7 +215,7 @@ async def test_dental_claim_without_prescription_skips_doctor_check(service_fact
         e for e in record.trace if e.check_name == "check_not_applicable:doctor_consistency"
     )
     assert "no prescription" in not_applicable.detail
-    assert record.status == ClaimStatus.CHECKED
+    assert record.status != ClaimStatus.NEEDS_RESUBMISSION
 
 
 async def test_checker_receives_member_and_dependents_for_family_floater(service_factory):

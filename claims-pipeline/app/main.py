@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.agents import AgentSet
 from app.agents.classifier import DocumentClassifierAgent
 from app.agents.consistency import ConsistencyCheckerAgent
+from app.agents.prep import DecisionPrepAgent
 from app.agents.reader import DocumentReaderAgent
 from app.api import router
 from app.config import ROOT_DIR, AppConfig, load_config
@@ -28,6 +29,7 @@ def build_agents(config: AppConfig) -> AgentSet:
         classifier=DocumentClassifierAgent(llm, config),
         reader=DocumentReaderAgent(llm, config),
         consistency=ConsistencyCheckerAgent(llm, config),
+        prep=DecisionPrepAgent(llm, config),
     )
 
 

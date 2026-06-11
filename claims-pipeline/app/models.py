@@ -203,7 +203,6 @@ class PrepLineItem(BaseModel):
     amount: float
     coverage: Coverage
     matched_policy_entry: Optional[str] = None
-    is_primary_service: bool = False
     confidence: float = 1.0
 
 

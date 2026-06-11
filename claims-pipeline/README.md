@@ -8,7 +8,7 @@ far, and a **trace**: a list of events saying what was checked and what happened
 
 ```
 Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy Decision  →  Fraud Check
-(done)     (done)             (done)         (done)               (next)
+(done)     (done)             (done)         (done)               (done)              (next)
 ```
 
 **Build progress**
@@ -46,7 +46,20 @@ Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy
   WARN that travels into Steps 5–6. Checker failure degrades with a SKIPPED event
   (this stage is `simulate_component_failure`'s target — TC011). Status:
   `EXTRACTED → CHECKED`.
-- [ ] Step 5 — Policy decision (rules engine)
+- [x] **Step 5 — Policy decision**: two halves. **Decision Prep** (one LLM call)
+  maps document content onto the policy's exact terms — "Bariatric Consultation" →
+  "Obesity and weight loss programs", "T2DM" → the `diabetes` waiting-period key, a
+  misspelled "Apolo Hospital" → "Apollo Hospitals" — with a confidence per mapping.
+  The **Rules Engine** (pure code, no LLM) then applies the policy in a fixed,
+  documented order: membership timing → exclusions (which outrank waiting periods)
+  → condition waiting periods (rejections state the exact eligibility date) →
+  pre-auth → line-item filtering → payable base = min(claimed, documented covered)
+  → per-claim ceiling → **network discount before co-pay** → annual OPD headroom.
+  Every arithmetic step writes a trace event with before/after numbers. Identity
+  doubt from Step 4 forces `MANUAL_REVIEW` with the computed outcome attached; a
+  degraded pipeline keeps its decision plus a "manual review recommended" note
+  (TC011). Prep failure → `MANUAL_REVIEW`, never a crash. Status:
+  `CHECKED → DECIDED`.
 - [ ] Step 6 — Fraud check
 - [ ] UI, eval report over the 12 test cases, architecture document
 
@@ -186,14 +199,17 @@ app/
     classifier.py      # Document Classifier (vision): type + readability, strict schema
     reader.py          # Document Reader (vision): flexible content, envelope-only validation
     consistency.py     # Consistency Checker (text): fixed checks, strict verdicts, completeness-enforced
+    prep.py            # Decision Prep (text): semantic mapping onto exact policy terms
   pipeline/
     intake.py          # the front-door checks (each writes a PASS/FAIL trace event)
     runner.py          # stage orchestrator with the skip-on-failure rule
     document_check.py  # the early gate: concurrent classification + requirement check
     extraction.py      # concurrent reads; stub passthrough; read failures degrade
     consistency_checks.py  # check selection (code) + verdict routing (code); TC003 gate
+    policy_decision.py # prep wiring, low-confidence mapping warns, prep-failure fallback
+    rules_engine.py    # the policy applied in fixed order, pure code, every step traced
 scripts/
   make_mock_docs.py    # renders sample Indian medical documents (incl. a blurry one)
 policy_terms.json      # the policy (single source of truth for every rule)
-tests/                 # 85 tests: intake, policy store, runner, gates, extraction, consistency, API
+tests/                 # 110 tests: intake, policy store, runner, gates, extraction, consistency, rules engine, API
 ```

@@ -1,8 +1,15 @@
 """Every LLM prompt in the system, in one place, so they can be tuned without
 touching agent code. Agents import from here and nowhere else.
 
-Naming: <AGENT>_SYSTEM for system prompts, <agent>_user_* for user-turn builders.
+Naming: <AGENT>_SYSTEM for system prompts, <agent>_user(...) for user-turn
+builders. Shared block builders (claim/member/documents) live at the bottom.
 """
+from __future__ import annotations
+
+import json
+
+from app.models import ClaimSubmission, DocumentRead, format_inr
+from app.policy_store import Member
 
 # --------------------------------------------------------------- Document Classifier
 # Step 2. One vision call per file: what kind of document is this, and can it be
@@ -212,3 +219,109 @@ def consistency_user(
         f"DOCUMENTS\n{documents_block}\n\n"
         f"CHECKS TO PERFORM (answer each exactly once, by check_id)\n{checks_block}"
     )
+
+
+# ------------------------------------------------------------------- Decision Prep
+# Step 5, first half. Turns the flexible document content into the machine-form
+# values the deterministic rules engine needs. The mappings are semantic —
+# "Bariatric Consultation" must hit "Obesity and weight loss programs", "T2DM"
+# must hit "diabetes", a misspelled "Apolo Hospital" must hit "Apollo Hospitals"
+# — which is why this is an LLM call and not string matching. The engine does ALL
+# the math and ALL the deciding; this call only maps.
+
+PREP_SYSTEM = """You prepare the machine-readable values a deterministic rules engine needs to
+decide an Indian health-insurance claim. You do the SEMANTIC MAPPING between what
+the documents say and the policy's exact terms. You do NOT decide the claim and
+you do NOT do money math — code does both.
+
+Produce:
+1. line_items — every billed line item across all bills. For each:
+   - description (as written on the bill) and amount (a number)
+   - coverage:
+     * EXCLUDED only when it genuinely falls under a policy exclusion entry —
+       set matched_policy_entry to the exact entry, e.g.
+       "excluded_procedures: Teeth Whitening" or
+       "exclusions.conditions: Cosmetic or aesthetic procedures"
+     * REQUIRES_PRE_AUTH when it matches a pre-authorization entry, e.g.
+       "high_value_tests_requiring_pre_auth: MRI" (the engine applies the
+       amount threshold — flag the match regardless of amount)
+     * COVERED otherwise (matched_policy_entry may name the covering entry or
+       stay null)
+   - confidence 0.0-1.0 for the mapping
+   - A bill that shows only a total with no itemization: create ONE line item
+     "Billed services (no itemization)" with the bill's total.
+2. documented_total — the combined total of all BILLS (never prescriptions or
+   reports).
+3. diagnosis — raw_diagnosis as the documents state it (diagnosis and/or
+   treatment); excluded_condition = the exact exclusions entry it falls under,
+   if any ("Morbid Obesity — BMI 37" → "Obesity and weight loss programs");
+   waiting_period_key = the exact specific_conditions key it falls under, if any
+   ("Type 2 Diabetes Mellitus" or "T2DM" → "diabetes"). Both null when not
+   applicable. Expand Indian medical shorthand (HTN = hypertension, T2DM =
+   diabetes).
+4. hospital — hospital_name_found from the bills (or as stated by the member);
+   matched_network_hospital = the exact network_hospitals entry it corresponds
+   to ("Apollo Hospitals, Bengaluru" or a misspelled "Apolo Hospital" →
+   "Apollo Hospitals"); null when it is not a network hospital.
+5. treatment_date_iso — the treatment date the documents evidence (YYYY-MM-DD),
+   null if absent.
+6. pre_auth_reference_found — true only if a document carries a
+   pre-authorization approval or reference number.
+7. notes — anything the engine or a human reviewer should know (ambiguities,
+   conflicting values, suspicious entries).
+
+Mapping discipline: map by MEANING, not string equality — but never stretch.
+When nothing genuinely matches, use null / COVERED and report your honest
+confidence. Never invent line items, amounts, or dates that are not in the
+documents."""
+
+
+def prep_user(*, claim_block: str, policy_block: str, documents_block: str) -> str:
+    return (
+        f"CLAIM DETAILS\n{claim_block}\n\n"
+        f"POLICY TERMS TO MAP AGAINST (exact entries)\n{policy_block}\n\n"
+        f"DOCUMENTS\n{documents_block}"
+    )
+
+
+# ------------------------------------------------------------ shared block builders
+
+def claim_block(submission: ClaimSubmission) -> str:
+    lines = [
+        f"category: {submission.claim_category.upper()}",
+        f"treatment_date: {submission.treatment_date.isoformat()}",
+        f"claimed_amount: {format_inr(submission.claimed_amount)}",
+    ]
+    if submission.hospital_name:
+        lines.append(f"hospital_name (as stated by the member): {submission.hospital_name}")
+    return "\n".join(lines)
+
+
+def member_block(member: Member | None, dependents: list[Member]) -> str:
+    if member is None:
+        return "member: (not found in roster)"
+    lines = [f"member: {member.name} ({member.member_id}, {member.relationship})"]
+    if dependents:
+        lines.append(
+            "registered dependents: "
+            + "; ".join(f"{d.name} ({d.relationship})" for d in dependents)
+        )
+    else:
+        lines.append("registered dependents: none")
+    return "\n".join(lines)
+
+
+def documents_block(reads: list[DocumentRead], unreadable_labels: list[str]) -> str:
+    parts = []
+    for read in reads:
+        content = json.dumps(read.content, ensure_ascii=False, default=str)
+        parts.append(
+            f"[{read.file_id} | {read.doc_type.value} | extraction_confidence "
+            f"{read.extraction_confidence:.2f}]\n{content}"
+        )
+    if unreadable_labels:
+        parts.append(
+            "Not available (could not be read, judge only from the documents above): "
+            + ", ".join(unreadable_labels)
+        )
+    return "\n\n".join(parts)

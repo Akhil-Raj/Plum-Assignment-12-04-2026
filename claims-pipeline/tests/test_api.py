@@ -63,19 +63,23 @@ VALID_CLAIM = {
 }
 
 
-def test_valid_claim_flows_to_consistency_and_degrades_keyless(client):
+def test_valid_claim_reaches_a_decision_even_fully_keyless(client):
     response = client.post("/claims/json", json=VALID_CLAIM)
     assert response.status_code == 200, response.text
     body = response.json()
     # intake, document check and extraction are LLM-free for stub documents; the
-    # consistency checker is a real LLM call, which fails keyless and degrades
-    assert body["status"] == "CHECKED"
+    # consistency checker and decision prep are real LLM calls, which fail keyless
+    # and degrade — the claim still reaches a decision (MANUAL_REVIEW), never a 500
+    assert body["status"] == "DECIDED"
     assert body["claim_id"].startswith("CLM_")
     assert {c["detected_type"] for c in body["classifications"]} == {"PRESCRIPTION", "HOSPITAL_BILL"}
     assert len(body["reads"]) == 2, "stub documents read with no LLM involved"
-    skipped = [e for e in body["trace"] if e["result"] == "SKIPPED"]
-    assert skipped and "CONSISTENCY_CALL_FAILED" in skipped[0]["detail"]
-    assert "consistency_checks" in body["skipped_components"]
+    skipped_details = " | ".join(e["detail"] for e in body["trace"] if e["result"] == "SKIPPED")
+    assert "CONSISTENCY_CALL_FAILED" in skipped_details
+    assert "PREP_CALL_FAILED" in skipped_details
+    assert {"consistency_checks", "decision_prep"} <= set(body["skipped_components"])
+    assert body["decision"]["decision"] == "MANUAL_REVIEW"
+    assert body["decision"]["manual_review_recommended"] is True
     assert body["confidence"] < 1.0
 
 
@@ -86,6 +90,7 @@ def test_simulate_component_failure_skips_the_stage_but_not_the_claim(client):
     skipped = [e for e in body["trace"] if e["result"] == "SKIPPED"]
     assert skipped and "simulated" in skipped[0]["detail"]
     assert "consistency_checks" in body["skipped_components"]
+    assert body["status"] == "DECIDED" and body["decision"] is not None
     assert body["confidence"] < 1.0
 
 
@@ -182,12 +187,13 @@ def test_multipart_submission_stores_files_and_degrades_without_llm(client, tmp_
     assert [d["file_id"] for d in docs] == ["F001", "F002"]
     assert docs[0]["declared_type"] == "PRESCRIPTION"
     assert docs[0]["stored_path"] and (tmp_path / "uploads").exists()
-    assert body["status"] == "CHECKED"
+    assert body["status"] == "DECIDED"
     assert {c["source"] for c in body["classifications"]} == {"declared_fallback"}
     assert all(r["read_failed"] for r in body["reads"]), "reader degrades without a key"
     assert any(e["result"] == "WARN" for e in body["trace"])
     assert any(e["result"] == "SKIPPED" for e in body["trace"])
     assert "consistency_checks" in body["skipped_components"], "nothing readable to check"
+    assert body["decision"]["decision"] == "MANUAL_REVIEW", "no readable amounts -> a human decides"
     assert body["confidence"] < 1.0
 
 
