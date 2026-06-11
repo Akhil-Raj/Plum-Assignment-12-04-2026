@@ -11,8 +11,8 @@ Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy
 (done)     (done)             (done)         (done)               (done)              (done)
 ```
 
-**The pipeline is complete, with a UI.** Remaining: the 12-case eval report and
-the architecture + contracts documents.
+**The pipeline is complete, with a UI and an eval runner.** Remaining: the
+architecture + contracts documents.
 
 **Build progress**
 
@@ -80,7 +80,25 @@ the architecture + contracts documents.
   12 bundled test scenarios, and an ops review view showing every claim's
   decision, money/line-item breakdowns, fraud signals, documents with extracted
   content, and the full color-coded trace from intake to FINALIZED.
-- [ ] Eval report over the 12 test cases, architecture document
+- [x] **Eval runner** (`scripts/run_eval.py`) — feeds all 12 test cases through
+  the same in-process service the API uses and writes `eval_report.md`: a summary
+  table plus, per case, expected-vs-actual fields, an automated check **with
+  quoted evidence** for every `system_must` requirement, an auto-generated
+  "why it didn't match" section for failures, the full decision output, and the
+  full trace. Exit code 1 on any failure (CI-friendly).
+- [ ] Architecture document, component contracts
+
+## Eval report
+
+```bash
+ANTHROPIC_API_KEY=sk-... .venv/bin/python scripts/run_eval.py
+```
+
+writes `eval_report.md` at the project root. Stub documents keep the classifier
+and reader LLM-free (deterministic); the consistency checker, decision prep, and
+fraud assessor are live LLM calls. Run keyless and the semantic stages degrade by
+design — the report still generates, stamped with a warning, with the
+deterministic cases (TC001, TC002, TC009) passing.
 
 ## Setup
 
@@ -222,6 +240,7 @@ app/
   policy_store.py      # loads + validates policy_terms.json at boot; all policy reads go through it
   storage.py           # SQLite behind a small repository interface
   service.py           # the one claim-processing entry point (API + eval share it)
+  evaluation.py        # eval harness: per-case field + system_must checks, report rendering
   api.py               # POST /claims, POST /claims/json, GET /claims[/{id}], GET /policy/meta
   main.py              # app factory + agent wiring
   agents/
@@ -241,7 +260,8 @@ app/
     fraud_check.py     # threshold checks (code) + assessor + override routing; end of pipeline
 ui/                    # dependency-free single page: submission form + ops review (full trace)
 scripts/
+  run_eval.py          # CLI: run the 12 cases, write eval_report.md
   make_mock_docs.py    # renders sample Indian medical documents (incl. a blurry one)
 policy_terms.json      # the policy (single source of truth for every rule)
-tests/                 # 121 tests: every stage, every gate, every graded scenario, API, UI serving
+tests/                 # 126 tests: every stage, every gate, every graded scenario, eval harness, API, UI
 ```

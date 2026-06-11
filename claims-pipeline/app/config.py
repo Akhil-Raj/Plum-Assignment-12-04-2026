@@ -7,11 +7,29 @@ and are never duplicated here.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from pydantic import BaseModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
+
+
+def _load_dotenv() -> None:
+    """Minimal .env support, no dependency: KEY=VALUE lines from a gitignored
+    .env at the project root. Real environment variables always win."""
+    env_file = ROOT_DIR / ".env"
+    if not env_file.exists():
+        return
+    for line in env_file.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+
+
+_load_dotenv()
 
 
 class LLMModels(BaseModel):
@@ -57,8 +75,9 @@ class ConfidenceConfig(BaseModel):
     warn_deduction: float = 0.05               # each WARN event
     read_failed_deduction: float = 0.15        # a document that could not be read at all
     skipped_component_deduction: float = 0.25  # an entire component failed and was skipped
-    fraud_signal_deduction: float = 0.05       # sub-threshold fraud signals present
-    floor: float = 0.05
+    fraud_signal_deduction: float = 0.05       # sub-threshold fraud signals present...
+    fraud_signal_dip_min_score: float = 0.3    # ...but only from this score up — benign
+    floor: float = 0.05                        # notes (score near 0) don't dent confidence
 
 
 class FilesConfig(BaseModel):

@@ -200,9 +200,14 @@ Three-way patient-name rule for patient_identity:
    not FAIL (the documents may be perfectly genuine), not PASS (an identity gate
    must not be satisfied by an initial).
 
-A patient name that simply doesn't appear on a document (e.g. a lab slip without
-a name) is not a mismatch — note it and judge from the documents that do carry
-names."""
+Absent information is a note, not a finding: when something is simply not on a
+document (no date, no doctor on a bill, no patient name on one document) and
+nothing that IS present contradicts anything, return PASS and record the absence
+in the explanation. Reserve WARN for information that is present and inconsistent
+or concerning. One exception: if NO document carries any patient name, return
+WARN for patient_identity — identity could not be cross-checked at all — but
+never FAIL and never MANUAL_REVIEW, which are reserved for names that are
+present (clearly different person, or an initials-only partial match)."""
 
 
 def consistency_user(
@@ -322,7 +327,9 @@ Signals worth weight (from real claims-fraud practice):
   billing)
 
 NOT fraud on their own: poor photo quality, handwriting, regional language,
-missing optional documents, a single legitimate-looking high bill.
+missing optional documents, a single legitimate-looking high bill, or names and
+dates simply missing from otherwise-consistent documents (a documentation gap,
+not manipulation — score it near 0 unless something else points to intent).
 
 Output:
 - fraud_score: 0.0-1.0, your overall judgment. Calibration: 0.0-0.3 benign or

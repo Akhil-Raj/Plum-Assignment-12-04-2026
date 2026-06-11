@@ -163,10 +163,26 @@ async def test_score_below_threshold_keeps_decision_with_slight_dip(service_fact
 
     assert record.decision.decision == DecisionType.APPROVED, "the decision stands"
     assert any(e.check_name == "fraud_signal:DOCUMENT_ALTERATION" for e in record.trace)
-    # one consistency WARN + one sub-threshold fraud dip
+    # one consistency WARN + one sub-threshold fraud dip (0.30 reaches the dip floor)
     expected = 1.0 - config.confidence.warn_deduction - config.confidence.fraud_signal_deduction
     assert record.confidence == pytest.approx(expected)
     assert record.fraud.fraud_score == 0.30
+
+
+async def test_benign_near_zero_signals_do_not_dent_confidence(service_factory, config):
+    from tests.conftest import FakeConsistencyChecker, make_verdict
+
+    checker = FakeConsistencyChecker(
+        verdicts={"line_item_sums": make_verdict("line_item_sums", "WARN", explanation="sum mismatch")}
+    )
+    service = service_factory(consistency=checker, fraud_assessor=scored_assessor(0.10))
+    record = await service.submit(make_submission())
+
+    assert record.decision.decision == DecisionType.APPROVED
+    # the signal is recorded in the trace, but a near-zero score (below the dip
+    # floor) is a benign note — only the consistency WARN dents confidence
+    assert any(e.check_name == "fraud_signal:DOCUMENT_ALTERATION" for e in record.trace)
+    assert record.confidence == pytest.approx(1.0 - config.confidence.warn_deduction)
 
 
 # ----------------------------------------------------------------- degradation

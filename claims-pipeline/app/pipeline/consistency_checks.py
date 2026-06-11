@@ -189,7 +189,7 @@ def build_stage(policy: PolicyStore, config: AppConfig, checker) -> StageFn:
                     record.add_trace(STAGE, check, TraceResult.WARN, summary)
                     record.manual_review_required = True
                     record.manual_review_reasons.append(
-                        f"patient identity matched on initials only: "
+                        f"patient identity requires human confirmation: "
                         f"{verdict.evidence or verdict.explanation}"
                     )
                     warn_count += 1

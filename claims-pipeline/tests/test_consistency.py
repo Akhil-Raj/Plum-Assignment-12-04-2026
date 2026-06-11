@@ -83,7 +83,7 @@ async def test_abbreviation_only_match_flags_manual_review(service_factory):
 
     assert record.status != ClaimStatus.NEEDS_RESUBMISSION, "not bounced — the documents may be genuine"
     assert record.manual_review_required is True
-    assert any("initials only" in r for r in record.manual_review_reasons)
+    assert any("requires human confirmation" in r and "R. Kumar" in r for r in record.manual_review_reasons)
     assert any(
         e.check_name == "patient_identity" and e.result == TraceResult.WARN for e in record.trace
     )

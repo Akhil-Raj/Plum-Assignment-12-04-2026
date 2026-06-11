@@ -186,7 +186,7 @@ def build_stage(policy: PolicyStore, config: AppConfig, assessor) -> StageFn:
                     f"policy's manual-review threshold of {float(score_threshold):.2f}: "
                     + "; ".join(s.explanation for s in assessment.signals[:3]),
                 ))
-            elif assessment.signals:
+            elif assessment.signals and assessment.fraud_score >= config.confidence.fraud_signal_dip_min_score:
                 record.deduct_confidence(
                     config.confidence.fraud_signal_deduction,
                     stage=STAGE,
