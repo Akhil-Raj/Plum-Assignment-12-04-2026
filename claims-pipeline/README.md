@@ -19,7 +19,8 @@ Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy
 | 2. Architecture document | [ARCHITECTURE.md](ARCHITECTURE.md) — components, design decisions, rejected alternatives, 10× scaling |
 | 3. Component contracts | [CONTRACTS.md](CONTRACTS.md) — in/out/errors/guarantees for every component |
 | 4. Eval report | [eval_report.md](eval_report.md) — all 12 cases, decisions + full traces + evidence; regenerate with `scripts/run_eval.py` |
-| — Assumptions | [ASSUMPTIONS.md](ASSUMPTIONS.md) — every judgment call, incl. the test-case contradictions and how they were resolved |
+| 5. Demo video | [Google Drive](https://drive.google.com/drive/folders/1h1pMpjzvx7dyUrEyAN19HajYBjzQb7DQ?usp=sharing) — a claim stopped early with the specific error, an end-to-end approval with the full trace, and two technical decisions |
+| - Assumptions | [ASSUMPTIONS.md](ASSUMPTIONS.md) — every judgment call, incl. the test-case contradictions and how they were resolved |
 
 **Build progress**
 

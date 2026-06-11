@@ -1,25 +1,18 @@
-# Plum AI Engineer Assignment
+# Health Insurance Claims Processing — Plum AI Engineer Assignment
 
-## Overview
+**Submission.** The solution — a multi-agent claims pipeline with an API, a UI,
+tests, a eval report, the architecture/contracts/assumptions documents,
+and the demo video link — lives in [`claims-pipeline/`](claims-pipeline/).
 
-This package contains everything you need to complete the Health Insurance Claims Processing assignment for the AI Engineer role at Plum.
+**Start at [`claims-pipeline/README.md`](claims-pipeline/README.md)** — it carries
+the deliverables map, setup, and everything else.
 
-## Package Contents
+The remaining files at this level are the original assignment inputs:
 
 ```
-multi_agent_claims_pipeline/
-│
-├── README.md                  # This file
-├── assignment.md              # Full assignment — read this first
-├── policy_terms.json          # Policy configuration, coverage rules, member roster
-├── test_cases.json            # 12 test scenarios with expected outcomes
-└── sample_documents_guide.md  # Indian medical document formats and extraction guidance
+assignment.md              # the assignment brief
+policy_terms.json          # policy configuration, coverage rules, member roster
+test_cases.json            # the 12 graded scenarios with expected outcomes
+sample_documents_guide.md  # Indian medical document formats and guidance
+Assumptions.md             # the original assumption note this work started from
 ```
-
-## Getting Started
-
-Read `assignment.md` in full before writing a single line of code. Understand the problem before you reach for a solution.
-
-## Timeline
-
-2-3 days from receipt.
