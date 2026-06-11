@@ -11,8 +11,15 @@ Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy
 (done)     (done)             (done)         (done)               (done)              (done)
 ```
 
-**The pipeline is complete, with a UI and an eval runner.** Remaining: the
-architecture + contracts documents.
+**Everything is built.** Live eval: **12/12 PASS** ([eval_report.md](eval_report.md)).
+
+| Deliverable | Where |
+|---|---|
+| 1. Working system | this repo — API + UI (`/ui/`), setup below |
+| 2. Architecture document | [ARCHITECTURE.md](ARCHITECTURE.md) — components, design decisions, rejected alternatives, 10× scaling |
+| 3. Component contracts | [CONTRACTS.md](CONTRACTS.md) — in/out/errors/guarantees for every component |
+| 4. Eval report | [eval_report.md](eval_report.md) — all 12 cases, decisions + full traces + evidence; regenerate with `scripts/run_eval.py` |
+| — Assumptions | [ASSUMPTIONS.md](ASSUMPTIONS.md) — every judgment call, incl. the test-case contradictions and how they were resolved |
 
 **Build progress**
 
@@ -86,7 +93,9 @@ architecture + contracts documents.
   quoted evidence** for every `system_must` requirement, an auto-generated
   "why it didn't match" section for failures, the full decision output, and the
   full trace. Exit code 1 on any failure (CI-friendly).
-- [ ] Architecture document, component contracts
+- [x] **Architecture document + component contracts + assumptions** —
+  [ARCHITECTURE.md](ARCHITECTURE.md), [CONTRACTS.md](CONTRACTS.md),
+  [ASSUMPTIONS.md](ASSUMPTIONS.md).
 
 ## Eval report
 
