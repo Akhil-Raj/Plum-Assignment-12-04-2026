@@ -8,7 +8,7 @@ far, and a **trace**: a list of events saying what was checked and what happened
 
 ```
 Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy Decision  →  Fraud Check
-(done)     (done)             (next)
+(done)     (done)             (done)         (next)
 ```
 
 **Build progress**
@@ -28,7 +28,14 @@ Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy
   message naming the exact problem and fix. Classifier failures fall back to the
   member-declared type with a `WARN`, then `UNKNOWN` — the pipeline never dies
   because the classifier did. All prompts live in `app/prompts.py`.
-- [ ] Step 3 — Extraction
+- [x] **Step 3 — Extraction**: every document that passed the gate gets one LLM read
+  capturing everything on it — names, amounts, dates, line items, per-field
+  confidences — **in whatever structure the model finds natural** (deliberately no
+  enforced schema; only a two-part envelope `{extraction_confidence, content}` is
+  validated, never the content). Stub documents store their `content` verbatim at
+  confidence 1.0 with zero LLM calls. Low-confidence reads WARN quoting the model's
+  own notes; a failed read attaches the document read-failed with a `SKIPPED` event
+  and the claim keeps moving. Status: `DOCUMENTS_VERIFIED → EXTRACTED`.
 - [ ] Step 4 — Cross-document consistency checks
 - [ ] Step 5 — Policy decision (rules engine)
 - [ ] Step 6 — Fraud check
@@ -86,8 +93,8 @@ curl -s -X POST localhost:8000/claims/json -H 'Content-Type: application/json' -
 }' | python3 -m json.tool
 ```
 
-→ `"status": "DOCUMENTS_VERIFIED"` plus a trace event for every intake check and
-every document classification.
+→ `"status": "EXTRACTED"` plus a trace event for every intake check, every document
+classification, and every document read.
 
 Trip the early gate (TC001's scenario — two prescriptions where a hospital bill is
 required):
@@ -168,12 +175,14 @@ app/
   main.py              # app factory + agent wiring
   agents/
     classifier.py      # Document Classifier (vision): type + readability, strict schema
+    reader.py          # Document Reader (vision): flexible content, envelope-only validation
   pipeline/
     intake.py          # the front-door checks (each writes a PASS/FAIL trace event)
     runner.py          # stage orchestrator with the skip-on-failure rule
     document_check.py  # the early gate: concurrent classification + requirement check
+    extraction.py      # concurrent reads; stub passthrough; read failures degrade
 scripts/
   make_mock_docs.py    # renders sample Indian medical documents (incl. a blurry one)
 policy_terms.json      # the policy (single source of truth for every rule)
-tests/                 # 54 tests: intake, policy store, runner, document gate, API
+tests/                 # 71 tests: intake, policy store, runner, document gate, extraction, API
 ```

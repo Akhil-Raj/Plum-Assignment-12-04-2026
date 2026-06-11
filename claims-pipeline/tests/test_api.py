@@ -50,15 +50,16 @@ VALID_CLAIM = {
 }
 
 
-def test_valid_claim_passes_intake_and_document_check(client):
+def test_valid_claim_passes_intake_gate_and_extraction(client):
     response = client.post("/claims/json", json=VALID_CLAIM)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["status"] == "DOCUMENTS_VERIFIED"
+    assert body["status"] == "EXTRACTED"
     assert body["claim_id"].startswith("CLM_")
-    assert len(body["trace"]) >= 10
+    assert len(body["trace"]) >= 12
     assert all(e["result"] == "PASS" for e in body["trace"])
     assert {c["detected_type"] for c in body["classifications"]} == {"PRESCRIPTION", "HOSPITAL_BILL"}
+    assert len(body["reads"]) == 2, "stub documents read with no LLM involved"
 
 
 def test_tc001_wrong_document_stops_via_api(client):
@@ -154,9 +155,11 @@ def test_multipart_submission_stores_files_and_degrades_without_llm(client, tmp_
     assert [d["file_id"] for d in docs] == ["F001", "F002"]
     assert docs[0]["declared_type"] == "PRESCRIPTION"
     assert docs[0]["stored_path"] and (tmp_path / "uploads").exists()
-    assert body["status"] == "DOCUMENTS_VERIFIED"
+    assert body["status"] == "EXTRACTED"
     assert {c["source"] for c in body["classifications"]} == {"declared_fallback"}
+    assert all(r["read_failed"] for r in body["reads"]), "reader degrades without a key"
     assert any(e["result"] == "WARN" for e in body["trace"])
+    assert any(e["result"] == "SKIPPED" for e in body["trace"])
     assert body["confidence"] < 1.0
 
 

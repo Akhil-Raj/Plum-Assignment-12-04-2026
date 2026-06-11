@@ -9,3 +9,4 @@ from typing import Any
 @dataclass
 class AgentSet:
     classifier: Any = None
+    reader: Any = None

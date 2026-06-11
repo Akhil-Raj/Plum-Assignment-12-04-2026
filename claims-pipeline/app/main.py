@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.agents import AgentSet
 from app.agents.classifier import DocumentClassifierAgent
+from app.agents.reader import DocumentReaderAgent
 from app.api import router
 from app.config import ROOT_DIR, AppConfig, load_config
 from app.llm import LLMClient
@@ -22,7 +23,10 @@ def build_agents(config: AppConfig) -> AgentSet:
     """Real LLM-backed agents. The underlying client is lazy, so the app boots
     without an API key; calls then fail per stage design and degrade gracefully."""
     llm = LLMClient(config.llm)
-    return AgentSet(classifier=DocumentClassifierAgent(llm, config))
+    return AgentSet(
+        classifier=DocumentClassifierAgent(llm, config),
+        reader=DocumentReaderAgent(llm, config),
+    )
 
 
 def create_app(config: AppConfig | None = None) -> FastAPI:

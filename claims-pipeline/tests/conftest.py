@@ -12,6 +12,7 @@ from app.models import (
     DocQuality,
     DocType,
     DocumentClassification,
+    DocumentRead,
     UploadedDocument,
 )
 from app.pipeline import build_pipeline
@@ -105,17 +106,55 @@ def make_classification(
     )
 
 
+class FakeReader:
+    """Stand-in for the Document Reader: returns whatever the test scripts for each
+    file_id (a DocumentRead, or an Exception to raise) and records calls."""
+
+    def __init__(self, results: Optional[dict] = None):
+        self.results = results or {}
+        self.calls: list[str] = []
+
+    async def read(self, document: UploadedDocument, detected_type: DocType) -> DocumentRead:
+        self.calls.append(document.file_id)
+        result = self.results.get(document.file_id)
+        if result is None:
+            raise AssertionError(f"FakeReader has no scripted result for {document.file_id}")
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+
+def make_read(
+    file_id: str,
+    doc_type: str = "PRESCRIPTION",
+    *,
+    # Scripted test input: a cleanly read document, comfortably above
+    # thresholds.extraction_confidence_warn. Low-confidence tests pass their own.
+    confidence: float = 0.92,
+    content: object = None,
+) -> DocumentRead:
+    return DocumentRead(
+        file_id=file_id,
+        doc_type=DocType(doc_type),
+        extraction_confidence=confidence,
+        content=content if content is not None else {"scripted": "by test"},
+    )
+
+
 @pytest.fixture
 def service_factory(tmp_path):
     """Builds a ClaimService over a temp DB with whatever agents the test scripts."""
 
-    def build(classifier=None) -> ClaimService:
+    def build(classifier=None, reader=None) -> ClaimService:
         config = load_config()
         config.storage.db_path = str(tmp_path / "service.db")
         config.files.upload_dir = str(tmp_path / "uploads")
         policy = PolicyStore(config.resolve(config.policy.policy_file))
         repo = ClaimRepository(config.resolve(config.storage.db_path))
-        agents = AgentSet(classifier=classifier or FakeClassifier())
+        agents = AgentSet(
+            classifier=classifier or FakeClassifier(),
+            reader=reader or FakeReader(),
+        )
         runner = build_pipeline(policy, config, agents)
         return ClaimService(config=config, policy=policy, repo=repo, runner=runner)
 

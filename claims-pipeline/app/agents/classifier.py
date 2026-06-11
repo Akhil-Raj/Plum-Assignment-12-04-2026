@@ -12,8 +12,6 @@ the free-text `evidence` and `notes` fields, where the model can say anything.
 """
 from __future__ import annotations
 
-import base64
-from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -22,15 +20,9 @@ from app.config import AppConfig
 from app.llm import LLMClient
 from app.models import DocQuality, DocType, DocumentClassification, UploadedDocument
 from app.prompts import CLASSIFIER_SYSTEM, CLASSIFIER_USER
+from app.sources import file_content_block
 
 AGENT = "classifier"
-
-_MEDIA_TYPES = {
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".pdf": "application/pdf",
-}
 
 
 class ClassifierOutput(BaseModel):
@@ -56,7 +48,7 @@ class DocumentClassifierAgent:
                 {
                     "role": "user",
                     "content": [
-                        self._file_block(document),
+                        file_content_block(document),
                         {"type": "text", "text": CLASSIFIER_USER},
                     ],
                 }
@@ -73,20 +65,3 @@ class DocumentClassifierAgent:
             notes=out.notes,
             source="llm",
         )
-
-    def _file_block(self, document: UploadedDocument) -> dict:
-        if not document.stored_path:
-            raise FileNotFoundError(f"document {document.file_id} has no stored file to classify")
-        path = Path(document.stored_path)
-        data = base64.standard_b64encode(path.read_bytes()).decode()
-        suffix = path.suffix.lower() or Path(document.file_name or "").suffix.lower()
-        media_type = _MEDIA_TYPES.get(suffix, "image/jpeg")
-        if media_type == "application/pdf":
-            return {
-                "type": "document",
-                "source": {"type": "base64", "media_type": media_type, "data": data},
-            }
-        return {
-            "type": "image",
-            "source": {"type": "base64", "media_type": media_type, "data": data},
-        }
