@@ -1,28 +1,32 @@
-"""Typed config loaded from config.yaml.
+"""System configuration — the single source of truth for every tunable that is ours:
+model names, thresholds, timeouts, retries, confidence deductions, file caps.
 
-Every tunable that is ours (model names, thresholds, timeouts, retries, deduction
-sizes, file caps) lives here. Policy rules stay in policy_terms.json — nothing in
-this file may encode policy.
+No magic numbers may live in logic code; they live here, typed and in one place.
+Policy rules are different: they live in policy_terms.json (read via PolicyStore)
+and are never duplicated here.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
 from pydantic import BaseModel
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
 
 class LLMModels(BaseModel):
-    classifier: str
-    reader: str
-    consistency: str
-    prep: str
-    fraud_assessor: str
+    # vision classification is fast + cheap and gates the expensive calls
+    classifier: str = "claude-sonnet-4-6"
+    # full document read: messy handwriting / stamps / regional language need depth
+    reader: str = "claude-opus-4-8"
+    consistency: str = "claude-opus-4-8"
+    prep: str = "claude-opus-4-8"
+    fraud_assessor: str = "claude-opus-4-8"
 
 
 class LLMMaxTokens(BaseModel):
+    """Per-response output ceilings (the Messages API requires max_tokens)."""
+
     classifier: int = 3000
     reader: int = 24000
     consistency: int = 8000
@@ -33,24 +37,27 @@ class LLMMaxTokens(BaseModel):
 class LLMConfig(BaseModel):
     api_key_env: str = "ANTHROPIC_API_KEY"
     timeout_seconds: float = 90.0
-    sdk_retries: int = 1
-    bad_output_retries: int = 1
-    models: LLMModels
+    sdk_retries: int = 1          # SDK-level retries for connection errors / 429 / 5xx
+    bad_output_retries: int = 1   # our retries when a response fails schema validation
+    models: LLMModels = LLMModels()
     max_tokens: LLMMaxTokens = LLMMaxTokens()
 
 
 class Thresholds(BaseModel):
+    # below these, a result gets a WARN trace event + confidence deduction
     classification_confidence_warn: float = 0.6
     extraction_confidence_warn: float = 0.6
-    name_mismatch_stop_confidence: float = 0.6
     prep_mapping_confidence_warn: float = 0.6
+    # a patient-mismatch FAIL below this confidence routes to manual review
+    # instead of stopping the claim (a blurry name must not bounce a real claim)
+    name_mismatch_stop_confidence: float = 0.6
 
 
 class ConfidenceConfig(BaseModel):
-    warn_deduction: float = 0.05
-    read_failed_deduction: float = 0.15
-    skipped_component_deduction: float = 0.25
-    fraud_signal_deduction: float = 0.05
+    warn_deduction: float = 0.05               # each WARN event
+    read_failed_deduction: float = 0.15        # a document that could not be read at all
+    skipped_component_deduction: float = 0.25  # an entire component failed and was skipped
+    fraud_signal_deduction: float = 0.05       # sub-threshold fraud signals present
     floor: float = 0.05
 
 
@@ -65,6 +72,8 @@ class StorageConfig(BaseModel):
 
 
 class PipelineConfig(BaseModel):
+    # the stage that `simulate_component_failure` breaks (TC011); consistency is the
+    # natural target because the claim can still reach a correct decision without it
     simulated_failure_stage: str = "consistency_checks"
 
 
@@ -73,7 +82,7 @@ class PolicyConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
-    llm: LLMConfig
+    llm: LLMConfig = LLMConfig()
     thresholds: Thresholds = Thresholds()
     confidence: ConfidenceConfig = ConfidenceConfig()
     files: FilesConfig = FilesConfig()
@@ -82,13 +91,10 @@ class AppConfig(BaseModel):
     policy: PolicyConfig = PolicyConfig()
 
     def resolve(self, path_str: str) -> Path:
-        """Resolve a config path relative to the project root."""
+        """Resolve a configured path relative to the project root."""
         path = Path(path_str)
         return path if path.is_absolute() else ROOT_DIR / path
 
 
-def load_config(path: Path | None = None) -> AppConfig:
-    config_path = path or ROOT_DIR / "config.yaml"
-    with open(config_path) as f:
-        raw = yaml.safe_load(f)
-    return AppConfig.model_validate(raw)
+def load_config() -> AppConfig:
+    return AppConfig()

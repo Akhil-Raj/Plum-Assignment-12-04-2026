@@ -1,12 +1,29 @@
-"""API tests: submit a valid claim -> RECEIVED + trace; each bad claim -> the right
-specific error; /policy/meta serves the dropdown data from the policy file."""
+"""API tests: submit a valid claim -> processed with trace; each bad claim -> the
+right specific error; /policy/meta serves the dropdown data from the policy file.
+
+TC001/TC002 run end-to-end here straight from test_cases.json — their documents are
+stubs, so no LLM is involved.
+"""
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.config import load_config
 from app.main import create_app
+
+TEST_CASES = json.loads(
+    (Path(__file__).resolve().parents[1] / "test_cases.json").read_text()
+)["test_cases"]
+
+
+def case_input(case_id: str) -> dict:
+    case = next(c for c in TEST_CASES if c["case_id"] == case_id)
+    # pin the submission date so the 30-day window holds for the 2024-dated cases
+    return {**case["input"], "submission_date": case["input"]["treatment_date"]}
 
 
 @pytest.fixture()
@@ -33,14 +50,36 @@ VALID_CLAIM = {
 }
 
 
-def test_valid_claim_is_received_with_trace(client):
+def test_valid_claim_passes_intake_and_document_check(client):
     response = client.post("/claims/json", json=VALID_CLAIM)
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["status"] == "RECEIVED"
+    assert body["status"] == "DOCUMENTS_VERIFIED"
     assert body["claim_id"].startswith("CLM_")
-    assert len(body["trace"]) >= 8
+    assert len(body["trace"]) >= 10
     assert all(e["result"] == "PASS" for e in body["trace"])
+    assert {c["detected_type"] for c in body["classifications"]} == {"PRESCRIPTION", "HOSPITAL_BILL"}
+
+
+def test_tc001_wrong_document_stops_via_api(client):
+    response = client.post("/claims/json", json=case_input("TC001"))
+    assert response.status_code == 200, "a stopped claim is not an HTTP error"
+    body = response.json()
+    assert body["status"] == "NEEDS_RESUBMISSION"
+    assert body["decision"] is None
+    message = body["problems"][0]["message"].lower()
+    assert "prescription" in message and "hospital bill" in message
+
+
+def test_tc002_unreadable_document_stops_via_api(client):
+    response = client.post("/claims/json", json=case_input("TC002"))
+    body = response.json()
+    assert body["status"] == "NEEDS_RESUBMISSION"
+    assert body["decision"] is None
+    problem = body["problems"][0]
+    assert problem["error_code"] == "UNREADABLE_DOCUMENT"
+    assert problem["file_name"] == "blurry_bill.jpg"
+    assert "blurry_bill.jpg" in problem["message"]
 
 
 def test_claim_round_trip_and_listing(client):
@@ -90,7 +129,10 @@ def test_policy_meta_serves_dropdown_data(client):
     assert meta["submission_rules"]["minimum_claim_amount"] == 500
 
 
-def test_multipart_submission_stores_files(client, tmp_path):
+def test_multipart_submission_stores_files_and_degrades_without_llm(client, tmp_path, monkeypatch):
+    # with no API key the classifier fails per design and the stage falls back to
+    # the member-declared types — the claim still gets through the gate, degraded
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     response = client.post(
         "/claims",
         data={
@@ -108,11 +150,14 @@ def test_multipart_submission_stores_files(client, tmp_path):
     )
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["status"] == "RECEIVED"
     docs = body["submission"]["documents"]
     assert [d["file_id"] for d in docs] == ["F001", "F002"]
     assert docs[0]["declared_type"] == "PRESCRIPTION"
     assert docs[0]["stored_path"] and (tmp_path / "uploads").exists()
+    assert body["status"] == "DOCUMENTS_VERIFIED"
+    assert {c["source"] for c in body["classifications"]} == {"declared_fallback"}
+    assert any(e["result"] == "WARN" for e in body["trace"])
+    assert body["confidence"] < 1.0
 
 
 def test_multipart_with_bad_extension_is_rejected(client):

@@ -24,7 +24,7 @@ A running service where you can submit a claim (member details + claim type + am
 - **Python + FastAPI** — async out of the box, and Pydantic gives us strict, validated data models (the assignment grades data modeling and validated LLM output, so Pydantic everywhere pays off later).
 - **SQLite** for storage now (one table for claims, one for trace events, one for uploaded files). Easy to swap for Postgres later; the storage layer hides behind a small interface so nothing else knows it's SQLite.
 - Policy comes only from `policy_terms.json`, loaded at startup by a **PolicyStore** component. No policy rule lives in code.
-- **A config file** (e.g., `config.yaml`) holds every tunable value that is *ours* rather than the policy's: LLM model name, confidence thresholds, call timeouts, retry counts, file size cap. No magic numbers in code; policy rules stay in `policy_terms.json`, system knobs stay in config.
+- **A typed config module** (`app/config.py` — Pydantic models with defaults) holds every tunable value that is *ours* rather than the policy's: LLM model names, confidence thresholds, call timeouts, retry counts, file size cap. One source of truth. No magic numbers in logic code; policy rules stay in `policy_terms.json`, system knobs stay in config.
 
 ## Components in Step 1
 

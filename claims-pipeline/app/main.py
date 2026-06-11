@@ -7,19 +7,29 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.agents import AgentSet
+from app.agents.classifier import DocumentClassifierAgent
 from app.api import router
 from app.config import ROOT_DIR, AppConfig, load_config
+from app.llm import LLMClient
 from app.pipeline import build_pipeline
 from app.policy_store import PolicyStore
 from app.service import ClaimService
 from app.storage import ClaimRepository
 
 
+def build_agents(config: AppConfig) -> AgentSet:
+    """Real LLM-backed agents. The underlying client is lazy, so the app boots
+    without an API key; calls then fail per stage design and degrade gracefully."""
+    llm = LLMClient(config.llm)
+    return AgentSet(classifier=DocumentClassifierAgent(llm, config))
+
+
 def create_app(config: AppConfig | None = None) -> FastAPI:
     config = config or load_config()
     policy = PolicyStore(config.resolve(config.policy.policy_file))
     repo = ClaimRepository(config.resolve(config.storage.db_path))
-    runner = build_pipeline(policy, config)
+    runner = build_pipeline(policy, config, build_agents(config))
 
     app = FastAPI(title="Claims Pipeline", version="0.1")
     app.state.service = ClaimService(config=config, policy=policy, repo=repo, runner=runner)
