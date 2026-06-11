@@ -15,6 +15,7 @@ from app.models import (
     DocType,
     DocumentClassification,
     DocumentRead,
+    FraudAssessment,
     PrepDiagnosis,
     PrepHospital,
     PrepLineItem,
@@ -279,11 +280,37 @@ class FakePrepAgent:
         return make_prep([make_item("Billed services", submission.claimed_amount)])
 
 
+class FakeFraudAssessor:
+    """Stand-in for the Fraud Assessor: returns the scripted assessment (default:
+    score 0, no signals), or raises the scripted error. Records calls + inputs."""
+
+    def __init__(self, result: Optional[FraudAssessment] = None, error: Optional[Exception] = None):
+        self.result = result
+        self.error = error
+        self.calls = 0
+        self.received: dict = {}
+
+    async def assess(
+        self, *, submission, soft_signals, reads, decision_summary, manual_review_threshold
+    ) -> FraudAssessment:
+        self.calls += 1
+        self.received = dict(
+            soft_signals=soft_signals,
+            decision_summary=decision_summary,
+            manual_review_threshold=manual_review_threshold,
+        )
+        if self.error is not None:
+            raise self.error
+        return self.result or FraudAssessment(fraud_score=0.0, signals=[], source="llm")
+
+
 @pytest.fixture
 def service_factory(tmp_path):
     """Builds a ClaimService over a temp DB with whatever agents the test scripts."""
 
-    def build(classifier=None, reader=None, consistency=None, prep=None) -> ClaimService:
+    def build(
+        classifier=None, reader=None, consistency=None, prep=None, fraud_assessor=None
+    ) -> ClaimService:
         config = load_config()
         config.storage.db_path = str(tmp_path / "service.db")
         config.files.upload_dir = str(tmp_path / "uploads")
@@ -294,6 +321,7 @@ def service_factory(tmp_path):
             reader=reader or FakeReader(),
             consistency=consistency or FakeConsistencyChecker(),
             prep=prep or FakePrepAgent(),
+            fraud_assessor=fraud_assessor or FakeFraudAssessor(),
         )
         runner = build_pipeline(policy, config, agents)
         return ClaimService(config=config, policy=policy, repo=repo, runner=runner)

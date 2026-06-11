@@ -27,7 +27,7 @@ async def test_tc004_end_to_end_approved_with_copay(service_factory):
     service = service_factory(prep=prep)
     record = await service.submit(make_submission(ytd_claims_amount=5000))
 
-    assert record.status == ClaimStatus.DECIDED
+    assert record.status == ClaimStatus.FINALIZED
     assert record.decision.decision == DecisionType.APPROVED
     assert record.decision.approved_amount == 1350
     assert record.decision.confidence == 1.0, "clean run: no uncertainty events"
@@ -41,7 +41,7 @@ async def test_prep_failure_routes_to_manual_review(service_factory, config):
     service = service_factory(prep=prep)
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.DECIDED, "never a crash, never a guess"
+    assert record.status == ClaimStatus.FINALIZED, "never a crash, never a guess"
     assert record.decision.decision == DecisionType.MANUAL_REVIEW
     assert record.decision.reasons[0].code == "PREP_FAILED"
     assert "PREP_CALL_FAILED" in record.decision.reasons[0].detail
@@ -64,7 +64,7 @@ async def test_no_readable_content_skips_prep_entirely(service_factory):
     )
     assert prep.calls == 0, "nothing readable: prep must not be called"
     assert record.decision.decision == DecisionType.MANUAL_REVIEW
-    assert record.status == ClaimStatus.DECIDED
+    assert record.status == ClaimStatus.FINALIZED
 
 
 async def test_low_confidence_mapping_warns_and_lowers_confidence(service_factory, config):
@@ -131,7 +131,7 @@ async def test_tc011_simulated_failure_keeps_approval_with_recommendation(servic
 
     # TC011's full expected shape: no crash, decision made, failure visible,
     # lower confidence, manual review recommended
-    assert record.status == ClaimStatus.DECIDED
+    assert record.status == ClaimStatus.FINALIZED
     assert record.decision.decision == DecisionType.APPROVED
     assert record.decision.approved_amount == 4000, "alternative medicine has no co-pay"
     assert "consistency_checks" in record.skipped_components

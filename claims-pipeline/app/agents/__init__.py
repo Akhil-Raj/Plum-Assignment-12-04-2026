@@ -1,5 +1,5 @@
 """Agent container. Stages receive their agents through this set, so tests swap in
-fakes without touching pipeline wiring. Fields are added as agents are built."""
+fakes without touching pipeline wiring."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,3 +12,4 @@ class AgentSet:
     reader: Any = None
     consistency: Any = None
     prep: Any = None
+    fraud_assessor: Any = None

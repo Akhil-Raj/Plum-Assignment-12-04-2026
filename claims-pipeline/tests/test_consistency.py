@@ -96,7 +96,7 @@ async def test_all_pass_reaches_checked_with_six_pass_verdicts(service_factory):
     service = service_factory()  # default checker auto-passes every asked check
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.DECIDED
+    assert record.status == ClaimStatus.FINALIZED
     check_events = [
         e for e in record.trace
         if e.stage == "consistency_checks" and e.check_name in {v.check_id for v in record.verdicts}
@@ -152,7 +152,7 @@ async def test_checker_failure_degrades_and_recommends_review(service_factory, c
     service = service_factory(consistency=checker)
     record = await service.submit(make_submission())
 
-    assert record.status == ClaimStatus.DECIDED, "the claim still reaches a decision without it"
+    assert record.status == ClaimStatus.FINALIZED, "the claim still reaches a decision without it"
     assert record.decision is not None
     assert "consistency_checks" in record.skipped_components
     skipped = next(
@@ -179,7 +179,7 @@ async def test_no_readable_content_degrades_without_calling_checker(service_fact
         )
     )
     assert checker.asked is None, "nothing readable: the checker must not be called"
-    assert record.status == ClaimStatus.DECIDED
+    assert record.status == ClaimStatus.FINALIZED
     assert "consistency_checks" in record.skipped_components
 
 

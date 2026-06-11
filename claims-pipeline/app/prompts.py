@@ -284,6 +284,77 @@ def prep_user(*, claim_block: str, policy_block: str, documents_block: str) -> s
     )
 
 
+# ------------------------------------------------------------------ Fraud Assessor
+# Step 6, second half. The threshold checks (counting claims, comparing values)
+# are pure code and have ALREADY run by the time this is called. This call weighs
+# only the soft signals — free-text observations accumulated through the pipeline
+# — which is a language task. The score is the model's judgment; what happens at
+# each score is the policy's, so the routing threshold is FETCHED from the policy
+# at call time, never hardcoded here.
+
+def fraud_assessor_system(manual_review_threshold: float | None) -> str:
+    if manual_review_threshold is not None:
+        operating_point = (
+            f"Scores at or above {manual_review_threshold:.2f} send the claim to a "
+            "human reviewer before money moves (this operating point comes from the "
+            "policy file, fraud_score_manual_review_threshold — not from you)."
+        )
+    else:
+        operating_point = (
+            "Where the routing line sits is set by the policy file and applied by "
+            "code — not by you."
+        )
+    return f"""You assess fraud risk signals for an Indian health-insurance claim that has
+already received a policy decision. Hard limits (same-day claim counts, monthly
+counts, value thresholds) are enforced by code and are NOT your job. Your job is
+to weigh the SOFT signals — observations collected while processing the claim —
+and the shape of the claim itself.
+
+Signals worth weight (from real claims-fraud practice):
+- amounts crossed out, rewritten, or otherwise altered on a document
+- duplicate "ORIGINAL"/"DUPLICATE" stamps, mismatched fonts, pasted-over regions
+- line items that do not sum to the stated total
+- the same bill number appearing twice, or sequential bills from different dates
+- doctor registration numbers that do not fit state formats
+  (KA/45678/2015, MH/23456/2018, AYUR/KL/2345/2019, ...)
+- provider-shopping patterns in the claims history (many providers, short window)
+- a claim shape inconsistent with the diagnosis (e.g. trivial diagnosis, maximal
+  billing)
+
+NOT fraud on their own: poor photo quality, handwriting, regional language,
+missing optional documents, a single legitimate-looking high bill.
+
+Output:
+- fraud_score: 0.0-1.0, your overall judgment. Calibration: 0.0-0.3 benign or
+  fully explainable; 0.3-0.6 worth noting in the file; 0.6 and up increasingly
+  suspicious. An empty or trivial signal list should score near 0. Score
+  honestly, never toward a routing target. {operating_point}
+- signals: each {{name, severity LOW/MEDIUM/HIGH, explanation}}. name is a short
+  machine-friendly tag (e.g. DOCUMENT_ALTERATION, SUM_MISMATCH,
+  DUPLICATE_STAMP, ODD_REGISTRATION, PROVIDER_SHOPPING). Explanations must be
+  specific enough for an ops reviewer to act on.
+
+You never decide the claim — routing decisions belong to code and humans."""
+
+
+def fraud_user(
+    *,
+    claim_block: str,
+    history_block: str,
+    signals_block: str,
+    documents_block: str,
+    decision_summary: str,
+) -> str:
+    return (
+        f"CLAIM DETAILS\n{claim_block}\n\n"
+        f"POLICY OUTCOME ALREADY COMPUTED (for context only)\n{decision_summary}\n\n"
+        f"CLAIMS HISTORY (this member)\n{history_block}\n\n"
+        f"SOFT SIGNALS COLLECTED DURING PROCESSING\n{signals_block}\n\n"
+        f"DOCUMENT CONTENTS (as extracted; may include the reader's own "
+        f"observations)\n{documents_block}"
+    )
+
+
 # ------------------------------------------------------------ shared block builders
 
 def claim_block(submission: ClaimSubmission) -> str:

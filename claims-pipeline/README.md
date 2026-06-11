@@ -8,8 +8,11 @@ far, and a **trace**: a list of events saying what was checked and what happened
 
 ```
 Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy Decision  →  Fraud Check
-(done)     (done)             (done)         (done)               (done)              (next)
+(done)     (done)             (done)         (done)               (done)              (done)
 ```
+
+**The pipeline is complete.** Remaining: the submission/ops UI, the 12-case eval
+report, and the architecture + contracts documents.
 
 **Build progress**
 
@@ -60,7 +63,17 @@ Intake  →  Document Check  →  Extraction  →  Cross-Doc Checks  →  Policy
   degraded pipeline keeps its decision plus a "manual review recommended" note
   (TC011). Prep failure → `MANUAL_REVIEW`, never a crash. Status:
   `CHECKED → DECIDED`.
-- [ ] Step 6 — Fraud check
+- [x] **Step 6 — Fraud check**: the last gate, after the decision — should a human
+  look before money moves? **Threshold checks are pure code** (claims per day /
+  per month, claim value vs the auto-review line — counting is not a judgment
+  call), each tracing its actual numbers; TC009's 4-same-day-claims pattern routes
+  to `MANUAL_REVIEW` with the signal named in the output. The **Fraud Assessor**
+  (one LLM call) weighs the soft signals collected through the pipeline — only
+  invoked when there is something to weigh; its routing threshold is fetched from
+  the policy at call time, never hardcoded. Overrides attach the computed policy
+  outcome for the reviewer; an already-`REJECTED` claim is never overridden (no
+  payment to protect); **fraud never auto-rejects**. Status:
+  `DECIDED → FINALIZED`.
 - [ ] UI, eval report over the 12 test cases, architecture document
 
 ## Setup
@@ -200,6 +213,7 @@ app/
     reader.py          # Document Reader (vision): flexible content, envelope-only validation
     consistency.py     # Consistency Checker (text): fixed checks, strict verdicts, completeness-enforced
     prep.py            # Decision Prep (text): semantic mapping onto exact policy terms
+    fraud_assessor.py  # Fraud Assessor (text): weighs soft signals; threshold fetched from policy
   pipeline/
     intake.py          # the front-door checks (each writes a PASS/FAIL trace event)
     runner.py          # stage orchestrator with the skip-on-failure rule
@@ -208,8 +222,9 @@ app/
     consistency_checks.py  # check selection (code) + verdict routing (code); TC003 gate
     policy_decision.py # prep wiring, low-confidence mapping warns, prep-failure fallback
     rules_engine.py    # the policy applied in fixed order, pure code, every step traced
+    fraud_check.py     # threshold checks (code) + assessor + override routing; end of pipeline
 scripts/
   make_mock_docs.py    # renders sample Indian medical documents (incl. a blurry one)
 policy_terms.json      # the policy (single source of truth for every rule)
-tests/                 # 110 tests: intake, policy store, runner, gates, extraction, consistency, rules engine, API
+tests/                 # 119 tests: every stage, every gate, every graded scenario, API
 ```

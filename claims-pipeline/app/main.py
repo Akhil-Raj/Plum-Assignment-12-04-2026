@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.agents import AgentSet
 from app.agents.classifier import DocumentClassifierAgent
 from app.agents.consistency import ConsistencyCheckerAgent
+from app.agents.fraud_assessor import FraudAssessorAgent
 from app.agents.prep import DecisionPrepAgent
 from app.agents.reader import DocumentReaderAgent
 from app.api import router
@@ -30,6 +31,7 @@ def build_agents(config: AppConfig) -> AgentSet:
         reader=DocumentReaderAgent(llm, config),
         consistency=ConsistencyCheckerAgent(llm, config),
         prep=DecisionPrepAgent(llm, config),
+        fraud_assessor=FraudAssessorAgent(llm, config),
     )
 
 
