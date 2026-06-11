@@ -1,0 +1,2 @@
+- In the "sample_documents_guide.md" doc, it says "flag regional fields as unextracted". Rather than treating regional-language fields as inherently unextractable, my parsing agent will attempt extraction and attach a per-field confidence score, flagging and down-weighting any field the model reads with low confidence. Low-confidence reads should be properly surfaced in the trace and correctly accounted for by the respective agent.
+
